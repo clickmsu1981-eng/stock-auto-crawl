@@ -1,0 +1,29 @@
+name: Daily KOSDAQ Update
+
+on:
+  schedule:
+    # 매일 평일(월-금) 한국시간 오후 4시 30분 실행 (UTC 07:30)
+    - cron: '30 7 * * 1-5'
+  workflow_dispatch: # 내가 원할 때 수동으로 돌려볼 수 있는 버튼
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Run Scraper
+        run: python kosdaq_scraper.py
+      - name: Commit and Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add *.xlsx
+          git commit -m "Update KOSDAQ Data" || exit 0
+          git push
