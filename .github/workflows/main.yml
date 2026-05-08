@@ -2,8 +2,9 @@ name: Daily KOSDAQ Update
 
 on:
   schedule:
-    # 매일 평일(월-금) 한국시간 오후 4시 30분 실행 (UTC 07:30)
-    - cron: '30 7 * * 1-5'
+    # 분 시 일 월 요일 (UTC 기준)
+    # 한국 시간(KST) 기준 매일 14:00(오후 2시), 20:00(오후 8시) 실행
+    - cron: '0 5,11 * * *'
   workflow_dispatch: # 내가 원할 때 수동으로 돌려볼 수 있는 버튼
 
 jobs:
