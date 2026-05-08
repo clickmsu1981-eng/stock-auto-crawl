@@ -6,7 +6,6 @@ import time
 
 def get_kosdaq_growth_data():
     # 1. 네이버 금융 항목 설정 (19:매출액증가율, 20:영업이익증가율, 27:외국인비율, 6:거래량, 4:전일비)
-    # 이미지와 똑같은 순서를 위해 쿠키 값을 고정합니다.
     target_fields = "019|020|027|006|004|"
     
     headers = {
@@ -50,8 +49,10 @@ def get_kosdaq_growth_data():
         if 'N' in final_df.columns:
             final_df.rename(columns={'N': '시총순위'}, inplace=True)
 
-        # 엑셀 파일명 (공휴일인 경우를 대비해 현재 시간 기록)
-        file_name = f"KOSDAQ_FINAL_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        # ⭐️수정된 부분: UTC 시간에 9시간을 더해 한국 시간(KST)으로 맞춤⭐️
+        kst_time = datetime.utcnow() + timedelta(hours=9)
+        file_name = f"KOSDAQ_FINAL_{kst_time.strftime('%Y%m%d_%H%M')}.xlsx"
+        
         final_df.to_excel(file_name, index=False)
         
         print("\n" + "="*50)
