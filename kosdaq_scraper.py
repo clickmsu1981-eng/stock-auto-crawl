@@ -8,10 +8,14 @@ def get_kosdaq_growth_data():
     # 1. 네이버 금융 항목 설정 (19:매출액증가율, 20:영업이익증가율, 27:외국인비율, 6:거래량, 4:전일비)
     target_fields = "019|020|027|006|004|"
     
+    # ⭐️ 수정 1: 헤더(Headers)를 실제 브라우저와 최대한 비슷하게 보강하여 봇 탐지 회피
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Referer': 'https://finance.naver.com/sise/sise_market_sum.naver?sosok=1',
-        'Cookie': f'field_list={target_fields}'
+        'Cookie': f'field_list={target_fields}',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Connection': 'keep-alive'
     }
 
     all_data = []
@@ -23,12 +27,21 @@ def get_kosdaq_growth_data():
         try:
             res = requests.get(url, headers=headers, timeout=10)
             
+            # ⭐️ 수정 2: 네이버에서 IP를 차단했는지 명확히 알기 위해 상태 코드 확인
+            if res.status_code != 200:
+                print(f"\n🚫 [오류] 페이지 {page} 접근 실패! HTTP 상태 코드: {res.status_code}")
+                if res.status_code == 403:
+                    print("➡️ 네이버에서 GitHub Actions의 IP를 봇으로 인식해 임시 차단했을 가능성이 높습니다.")
+                break
+                
             # 데이터가 없는 페이지거나 장이 열리지 않은 날의 빈 페이지 체크
             if "데이터가 없습니다" in res.text or "등록된 종목이 없습니다" in res.text:
                 break
                 
+            # HTML 테이블 파싱
             df_list = pd.read_html(StringIO(res.text), encoding='euc-kr')
-            if len(df_list) < 2: continue # 유효한 테이블이 없으면 건너뜀
+            if len(df_list) < 2: 
+                continue # 유효한 테이블이 없으면 건너뜀
             
             df = df_list[1]
             df = df[df['종목명'].notna()] # 빈 줄 제거
@@ -36,9 +49,12 @@ def get_kosdaq_growth_data():
             
             all_data.append(df)
             print(f"📡 {page}페이지 수집 완료", end='\r')
-            time.sleep(0.2)
+            
+            # ⭐️ 수정 3: GitHub Actions의 빠른 처리 속도로 인한 Rate Limit 회피를 위해 대기시간 증가
+            time.sleep(1.0) 
+            
         except Exception as e:
-            print(f"\n⚠️ {page}페이지에서 오류 발생: {e}")
+            print(f"\n⚠️ {page}페이지에서 크롤링 중 예외 오류 발생: {e}")
             break
 
     # 3. 결과 합치기 및 저장
@@ -49,7 +65,7 @@ def get_kosdaq_growth_data():
         if 'N' in final_df.columns:
             final_df.rename(columns={'N': '시총순위'}, inplace=True)
 
-        # ⭐️수정된 부분: UTC 시간에 9시간을 더해 한국 시간(KST)으로 맞춤⭐️
+        # UTC 시간에 9시간을 더해 한국 시간(KST)으로 맞춤
         kst_time = datetime.utcnow() + timedelta(hours=9)
         file_name = f"KOSDAQ_FINAL_{kst_time.strftime('%Y%m%d_%H%M')}.xlsx"
         
@@ -66,7 +82,7 @@ def get_kosdaq_growth_data():
         else:
             print("❗ 경고: 증가율 데이터가 누락되었습니다. 네이버 쿠키 정책을 다시 확인해야 합니다.")
     else:
-        print("\n❌ 수집된 데이터가 없습니다. (오늘은 시장이 열리지 않는 날일 수 있습니다)")
+        print("\n❌ 수집된 데이터가 없습니다. (오늘은 시장이 열리지 않는 날이거나, 접근이 막혔습니다)")
 
 if __name__ == "__main__":
     get_kosdaq_growth_data()
