@@ -3,15 +3,15 @@ import pandas as pd
 from io import StringIO
 from datetime import datetime, timedelta
 import time
+import sys
 
-def get_kosdaq_growth_data():
+def get_market_growth_data(market_name, sosok_code):
     # 1. 네이버 금융 항목 설정 (19:매출액증가율, 20:영업이익증가율, 27:외국인비율, 6:거래량, 4:전일비)
     target_fields = "019|020|027|006|004|"
     
-    # ⭐️ 수정 1: 헤더(Headers)를 실제 브라우저와 최대한 비슷하게 보강하여 봇 탐지 회피
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Referer': 'https://finance.naver.com/sise/sise_market_sum.naver?sosok=1',
+        'Referer': f'https://finance.naver.com/sise/sise_market_sum.naver?sosok={sosok_code}',
         'Cookie': f'field_list={target_fields}',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -19,20 +19,17 @@ def get_kosdaq_growth_data():
     }
 
     all_data = []
-    print("🚀 코스닥 데이터 수집을 시작합니다... (증가율 데이터 포함)")
+    print(f"\n🚀 {market_name} 데이터 수집을 시작합니다... (증가율 데이터 포함)")
 
-    # 2. 데이터 수집 (최대 45페이지까지 확인)
+    # 2. 데이터 수집 (코스피, 코스닥 모두 대략 45페이지 내외)
     for page in range(1, 45):
-        url = f"https://finance.naver.com/sise/sise_market_sum.naver?sosok=1&page={page}"
+        url = f"https://finance.naver.com/sise/sise_market_sum.naver?sosok={sosok_code}&page={page}"
         try:
             res = requests.get(url, headers=headers, timeout=10)
             
-            # ⭐️ 수정 2: 네이버에서 IP를 차단했는지 명확히 알기 위해 상태 코드 확인
             if res.status_code != 200:
                 print(f"\n🚫 [오류] 페이지 {page} 접근 실패! HTTP 상태 코드: {res.status_code}")
-                if res.status_code == 403:
-                    print("➡️ 네이버에서 GitHub Actions의 IP를 봇으로 인식해 임시 차단했을 가능성이 높습니다.")
-                break
+                sys.exit(1) # 에러 발생 시 강제 종료하여 GitHub Actions 실패 처리
                 
             # 데이터가 없는 페이지거나 장이 열리지 않은 날의 빈 페이지 체크
             if "데이터가 없습니다" in res.text or "등록된 종목이 없습니다" in res.text:
@@ -48,14 +45,14 @@ def get_kosdaq_growth_data():
             df = df.loc[:, ~df.columns.str.contains('Unnamed|토론')] # 불필요 컬럼 제거
             
             all_data.append(df)
-            print(f"📡 {page}페이지 수집 완료", end='\r')
+            print(f"📡 {market_name} {page}페이지 수집 완료", end='\r')
             
-            # ⭐️ 수정 3: GitHub Actions의 빠른 처리 속도로 인한 Rate Limit 회피를 위해 대기시간 증가
+            # Rate Limit 회피
             time.sleep(1.0) 
             
         except Exception as e:
             print(f"\n⚠️ {page}페이지에서 크롤링 중 예외 오류 발생: {e}")
-            break
+            sys.exit(1) # 에러 발생 시 강제 종료
 
     # 3. 결과 합치기 및 저장
     if all_data:
@@ -65,24 +62,25 @@ def get_kosdaq_growth_data():
         if 'N' in final_df.columns:
             final_df.rename(columns={'N': '시총순위'}, inplace=True)
 
-        # UTC 시간에 9시간을 더해 한국 시간(KST)으로 맞춤
+        # KST(한국 시간) 변환
         kst_time = datetime.utcnow() + timedelta(hours=9)
-        file_name = f"KOSDAQ_FINAL_{kst_time.strftime('%Y%m%d_%H%M')}.xlsx"
+        file_name = f"{market_name}_FINAL_{kst_time.strftime('%Y%m%d_%H%M')}.xlsx"
         
-        final_df.to_excel(file_name, index=False)
+        # ✨ 명시적 openpyxl 엔진 사용
+        final_df.to_excel(file_name, index=False, engine='openpyxl')
         
         print("\n" + "="*50)
-        print(f"✅ 수집 성공! 파일명: {file_name}")
-        print(f"📊 수집된 항목: {list(final_df.columns)}")
+        print(f"✅ {market_name} 수집 성공! 파일명: {file_name}")
         print("="*50)
-        
-        # 성공 여부 체크
-        if '영업이익증가율' in final_df.columns:
-            print("✨ 축하합니다! 모든 데이터가 정상적으로 수집되었습니다.")
-        else:
-            print("❗ 경고: 증가율 데이터가 누락되었습니다. 네이버 쿠키 정책을 다시 확인해야 합니다.")
     else:
-        print("\n❌ 수집된 데이터가 없습니다. (오늘은 시장이 열리지 않는 날이거나, 접근이 막혔습니다)")
+        print(f"\n❌ {market_name} 수집된 데이터가 없습니다.")
 
 if __name__ == "__main__":
-    get_kosdaq_growth_data()
+    # 코스피 (sosok=0) 수집
+    get_market_growth_data("KOSPI", "0")
+    
+    # 네이버 서버에 부담을 주지 않기 위해 시장 변경 전 잠시 대기
+    time.sleep(3)
+    
+    # 코스닥 (sosok=1) 수집
+    get_market_growth_data("KOSDAQ", "1")
